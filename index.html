@@ -1699,7 +1699,7 @@ body .micbtn.live{border-color:#FF4B4B;color:#FF4B4B;box-shadow:none}
 
       <!-- 05 词表 -->
       <section class="panel" id="panel-e">
-        <div class="caption"><h2>词表导入</h2><p>一行一个，或用逗号、空格隔开</p></div>
+        <div class="caption"><h2>词表导入</h2><p>一行一个，或用逗号、空格隔开；也可直接传 JSON 文件（批量导入/备份）</p></div>
         <div class="packs" id="packs"></div>
         <div class="imp">
           <div>
@@ -1710,6 +1710,9 @@ body .micbtn.live{border-color:#FF4B4B;color:#FF4B4B;box-shadow:none}
               <div class="spacer"></div>
               <button class="btn sm" id="impBtn">导入词库</button>
               <button class="btn ghost sm" id="impClear">清空</button>
+              <button class="btn sm" id="importJsonBtn" style="background:#48C8B0;color:#071009">📥 导入 JSON</button>
+              <button class="btn ghost sm" id="exportJsonBtn">📤 导出词库</button>
+              <input type="file" id="jsonFileInput" accept=".json" style="display:none">
             </div>
           </div>
           <div>
@@ -5252,16 +5255,82 @@ $('impBtn').addEventListener('click', ()=>{
     fresh.push(w);
   });
   if(!fresh.length){ toast('这些词都已经在词库里了'); return; }
-  fresh.forEach(w=>{
-    const c = classify(w);
-    state.bank.push({w:w, r:c.r, h:c.h});
-  });
+  fresh.forEach(w=> addWordToBankSilent(w) );
   state.impTotal += fresh.length;
   state.dImp += fresh.length;
   addXp(fresh.length);
   beep(700,100);
   syncHUD(); renderImport();
   toast('导入 ' + fresh.length + ' 个词 · 去 03 就能练');
+});
+/* 静默版 addWordToBank：不触发 toast/beep，批量导入时用 */
+function addWordToBankSilent(w){
+  const c = classify(w);
+  const cmu = typeof CMU !== 'undefined' && CMU[String(w||'').toLowerCase().trim()];
+  state.bank.push({w:w, r:c.r, h:c.h, arp: cmu?cmu.a:'', ipa: cmu?cmu.i:''});
+}
+/* ---- 导出词库为 JSON ---- */
+$('exportJsonBtn').addEventListener('click', ()=>{
+  const out = {
+    version: 1,
+    exportedAt: new Date().toISOString().slice(0,10),
+    tool: 'phono-v3',
+    bank: state.bank.map(b=>({w:b.w, m: DICT[b.w.toLowerCase()]?DICT[b.w.toLowerCase()][0]:'', e: DICT[b.w.toLowerCase()]?DICT[b.w.toLowerCase()][1]:'', ipa:b.ipa||'', arp:b.arp||''})),
+    book: state.book.map(b=>b.w)
+  };
+  const blob = new Blob([JSON.stringify(out, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'phono-wordbank-' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('已导出 ' + state.bank.length + ' 个词 + ' + state.book.length + ' 个错题');
+});
+/* ---- 导入 JSON 文件 ---- */
+$('importJsonBtn').addEventListener('click', ()=> $('jsonFileInput').click());
+$('jsonFileInput').addEventListener('change', (e)=>{
+  const f = e.target.files[0];
+  if(!f) return;
+  const reader = new FileReader();
+  reader.onload = (ev)=>{
+    try{
+      const data = JSON.parse(ev.target.result);
+      let words = [];
+      if(Array.isArray(data)){
+        /* 纯数组 ["cat","dog"] 或 [{"w":"cat",...}] */
+        data.forEach(x=>{
+          if(typeof x === 'string') words.push(x);
+          else if(x && x.w) words.push(x.w);
+        });
+      } else if(data.bank && Array.isArray(data.bank)){
+        data.bank.forEach(x=>{ if(x.w) words.push(x.w); else if(typeof x==='string') words.push(x); });
+      } else if(data.words && Array.isArray(data.words)){
+        data.words.forEach(x=>{ if(typeof x==='string') words.push(x); else if(x.w) words.push(x.w); });
+      } else {
+        toast('JSON 格式不对——需要数组 [] 或带 bank/words 字段'); return;
+      }
+      /* 去重 + 过滤已有 */
+      const seen = new Set(); const fresh = [];
+      words.forEach(w=>{
+        const k = String(w).toLowerCase().trim();
+        if(!k || !/^[a-z\-]+$/.test(k)) return;
+        if(seen.has(k)) return; seen.add(k);
+        if(state.bank.some(b=>b.w.toLowerCase()===k)) return;
+        fresh.push(k);
+      });
+      if(!fresh.length){ toast('JSON 里的词都已经在词库里了'); return; }
+      fresh.forEach(w=> addWordToBankSilent(w) );
+      state.impTotal += fresh.length; state.dImp += fresh.length;
+      addXp(fresh.length); beep(800,120);
+      syncHUD(); renderImport();
+      toast('JSON 导入 ' + fresh.length + ' 个新词（跳过重复 ' + (words.length - fresh.length) + ' 个）');
+    } catch(err){
+      toast('JSON 解析失败：' + err.message.slice(0,40));
+    }
+    e.target.value = '';
+  };
+  reader.readAsText(f);
 });
 
 /* ================= 对话窗 ================= */
