@@ -2299,9 +2299,17 @@ function recCount(){
   });
   return n;
 }
-function playRec(path, onFail){
+let curAudio = null;
+/* 统一播放入口：传 A_B64 的 slug 或直接传 dataURI/URL 都能播；
+   onFail 仅在出错时触发，onEnd 在播完时触发（对话队列用） */
+function playRec(src, onFail, onEnd){
   try{
-    const a = new Audio(path);
+    const url = (typeof A_B64 !== 'undefined' && A_B64[src]) ? A_B64[src] : src;
+    if(!url){ if(onFail) onFail(); return false; }
+    if(curAudio){ try{ curAudio.pause(); }catch(e){} }
+    const a = new Audio(url);
+    curAudio = a;
+    a.onended = ()=>{ if(onEnd) onEnd(); };
     a.onerror = ()=>{ if(onFail) onFail(); };
     const p = a.play();
     if(p && p.catch) p.catch(()=>{ if(onFail) onFail(); });
@@ -2806,6 +2814,12 @@ function praise(kind, opts){
 
 /* ================= 更新日志 ================= */
 const CHANGELOG = [
+  ['v3.5', '2026-11-05', [
+    '修复重大音频错乱：两个同名播放函数互相覆盖，导致字母/单词/例句真人音全部失效、回落到机器音怪声（平板上"音频跟字对不上"的根源）',
+    '统一播放入口：真人音（slug 或 dataURI）都能正确播放，连续按键自动打断上一条不再重叠',
+    '内嵌 CMU 词典（MIT 协议）：词典卡和新增生词自动匹配标准美式音标 /k\'æt/ 风格',
+    '词库支持 JSON 导入/导出：批量导入生词、家教之间传词库、备份恢复'
+  ]],
   ['v3.4.1', '2026-11-05', [
     '修复：平板端对话朗读无声 → 21 条对话模板真人音全量预录内嵌（base64），彻底绕开 speechSynthesis 和百度云 TTS 两条死路',
     '字母/单词/例句仍走原真人音模板；老师台词自动追加当前单词真人音，形成模板+单词的流畅拼接',
@@ -4153,16 +4167,6 @@ function aiPrefetch(w){
       .then(()=>{ delete aiPending[key]; save(); renderAI(); });
   }, wait);
 }
-function playRec(slug, cb){
-  if(!(typeof A_B64 !== 'undefined' && A_B64[slug])){ if(cb) cb(); return false; }
-  const a = new Audio(A_B64[slug]);
-  let done = false;
-  a.onended = ()=>{ if(!done){ done = true; if(cb) cb(); } };
-  a.onerror  = ()=>{ if(!done){ done = true; if(cb) cb(); } };
-  const p = a.play();
-  if(p && p.catch) p.catch(()=>{ if(!done){ done = true; if(cb) cb(); } });
-  return true;
-}
 function speakSeq(lines, rate){
   if(!lines || !lines.length) return;
   hintLine.textContent = '对话播报中…';
@@ -4175,13 +4179,13 @@ function speakSeq(lines, rate){
     const teacher = line.who === 'T';
     const cb = ()=>{
       if(tpl && wordKey && teacher){
-        playRec(wordKey, ()=>setTimeout(go, 150));
+        playRec(wordKey, ()=>setTimeout(go, 150), ()=>setTimeout(go, 150));
       } else {
         setTimeout(go, tpl ? 200 : 250);
       }
     };
     if(tpl){
-      playRec(tpl, cb);
+      playRec(tpl, cb, cb);
       return;
     }
     /* fallback：AI 生成的对话没有 tpl 字段，退回 speechSynthesis */
@@ -4190,13 +4194,13 @@ function speakSeq(lines, rate){
         const u = new SpeechSynthesisUtterance(line.text);
         u.lang = 'en-GB'; u.rate = rate || 0.82; u.pitch = 1;
         if(voice) u.voice = voice;
-        u.onend = ()=>{ if(wordKey && teacher){ playRec(wordKey, ()=>setTimeout(go,150)); } else setTimeout(go,200); };
+        u.onend = ()=>{ if(wordKey && teacher){ playRec(wordKey, ()=>setTimeout(go,150), ()=>setTimeout(go,150)); } else setTimeout(go,200); };
         u.onerror = ()=>setTimeout(go, 200);
         speechSynthesis.cancel(); speechSynthesis.speak(u);
       }catch(e){ setTimeout(go, 200); }
     } else {
       /* 最后兜底：直接播单词真人音占位 */
-      if(wordKey) playRec(wordKey, cb);
+      if(wordKey) playRec(wordKey, cb, cb);
       else setTimeout(go, 150);
     }
   };
