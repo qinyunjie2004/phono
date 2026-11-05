@@ -1590,7 +1590,7 @@ body .micbtn.live{border-color:#FF4B4B;color:#FF4B4B;box-shadow:none}
     <div class="brand">
       <button class="brand-mascot" id="brandMascot" type="button" title="点我，我会说话"><svg class="mascot" viewBox="0 0 100 100"><use href="#bo-happy"/></svg></button>
       <h1>拼读机</h1>
-      <span class="model">PHONO&#8209;1 v3</span>
+      <button class="model" id="logBtn" type="button" title="点我看更新日志" style="cursor:pointer;background:none">PHONO&#8209;1 v3 · 日志</button>
       <div class="brand-say" id="brandSay" hidden></div>
     </div>
     <button class="who" id="whoBtn" title="学生档案与数据">
@@ -2788,6 +2788,46 @@ function praise(kind, opts){
   const holdMs = opts.hold || (kind === 'amazing' ? 1400 : 1000);
   p._tm = setTimeout(()=>{ p.classList.remove('on'); if(opts.then) opts.then(); }, holdMs);
 }
+
+/* ================= 更新日志 ================= */
+const CHANGELOG = [
+  ['v3.4', '2026-11-05', [
+    '全量真人语音：26 个字母例词、76 个单词、76 条例句全部预录内嵌',
+    '新增「读例句」按钮：词典卡和讲解卡都能听整句真人发音',
+    'AI 对话朗读改在线语音：平板、手机、微信浏览器都能响，断网自动退回机器音',
+    '安卓平板（如小米平板）用 Chrome 打开全功能可用，含 MIC 跟读打分'
+  ]],
+  ['v3.3', '2026-11-04', [
+    '发布公网链接，甩给别人即开即用',
+    '修复平板第一行字母键被顶栏挡住的界面错误',
+    '激励语音换成有激情的真人声，弹窗降频、停留缩短',
+    '题目中的题眼词黄底高亮、加大加粗',
+    '移动端适配：字母键自动变 5/4 列，不再横向溢出'
+  ]],
+  ['v3.2', '更早', [
+    'DUO 浅色皮肤、八大练习模式',
+    'AI 师生对话（联网生成，断网自动用内置模板）',
+    'MIC 跟读打分（Chrome）、错题本、学生档案'
+  ]]
+];
+function showLog(){
+  const p = $('pop');
+  clearTimeout(p._tm);
+  let h = '<div class="pcard" style="max-width:430px;width:92vw;text-align:left;max-height:82vh;overflow-y:auto">';
+  h += '<div class="pw" style="font-size:20px">更新日志</div>';
+  CHANGELOG.forEach(v=>{
+    h += '<div style="margin:12px 0 4px;font-weight:800">' + v[0] +
+      ' <span style="font-weight:400;font-size:11px;color:#888">' + v[1] + '</span></div>';
+    h += '<ul style="margin:0 0 4px 18px;padding:0;font-size:12.5px;line-height:1.7;color:#444">';
+    v[2].forEach(t=>{ h += '<li>' + t + '</li>'; });
+    h += '</ul>';
+  });
+  h += '<div class="pact"><button class="pbtn" id="logClose">关闭</button></div></div>';
+  p.innerHTML = h;
+  p.classList.add('on');
+  $('logClose').addEventListener('click', ()=>p.classList.remove('on'));
+}
+$('logBtn').addEventListener('click', showLog);
 
 /* ================= 01 键阵 ================= */
 const keysEl = $('keys');
