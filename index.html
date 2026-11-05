@@ -2292,7 +2292,26 @@ function playRec(path, onFail){
     return true;
   }catch(e){ if(onFail) onFail(); return false; }
 }
-function ttsRaw(text, rate){
+/* ---------- 云 TTS：动态句子走在线语音（百度翻译发音接口），离线退回机器音 ---------- */
+let cloudAud = null;
+function stopCloud(){ try{ if(cloudAud){ cloudAud.pause(); cloudAud.src = ''; cloudAud = null; } }catch(e){} }
+function cloudSay(text, rate, onend, onfail){
+  try{
+    stopCloud();
+    const spd = (rate && rate < 0.88) ? 2 : 3;
+    const a = new Audio(); cloudAud = a;
+    let settled = false;
+    const to = setTimeout(()=>{ if(!settled){ settled = true; fin(); if(onfail) onfail(); } }, 8000);
+    function fin(){ clearTimeout(to); a.onerror = null; a.onended = null; }
+    a.onerror = ()=>{ if(!settled){ settled = true; fin(); if(onfail) onfail(); } };
+    a.onended = ()=>{ if(!settled){ settled = true; fin(); if(onend) onend(); } };
+    a.src = 'https://fanyi.baidu.com/gettts?lan=en&spd=' + spd + '&source=web&text=' + encodeURIComponent(text);
+    const p = a.play();
+    if(p && p.catch) p.catch(()=>{ if(!settled){ settled = true; fin(); if(onfail) onfail(); } });
+    return true;
+  }catch(e){ if(onfail) onfail(); return false; }
+}
+function ttsOffline(text, rate){
   if(!('speechSynthesis' in window) || !text) return false;
   const u = new SpeechSynthesisUtterance(String(text));
   u.lang = 'en-GB'; u.rate = rate || 0.9; u.pitch = 1;
@@ -2300,6 +2319,13 @@ function ttsRaw(text, rate){
   speechSynthesis.cancel();
   speechSynthesis.speak(u);
   return true;
+}
+function ttsRaw(text, rate){
+  if(!text) return false;
+  if(navigator.onLine !== false){
+    return cloudSay(String(text), rate, null, ()=>ttsOffline(text, rate));
+  }
+  return ttsOffline(text, rate);
 }
 function machineTag(label){
   hintLine.textContent = '机器音 · ' + label;
@@ -3488,6 +3514,7 @@ let attempt = 0;      /* 同一个词错了几次 */
 let revealed = false; /* 是否已经给出答案（抄写模式） */
 function nextWord(){
   try{ if('speechSynthesis' in window) speechSynthesis.cancel(); }catch(e){}
+  stopCloud();
   hideExplain();
   attempt = 0; revealed = false;
   ansIn.disabled = false;
@@ -4063,9 +4090,28 @@ function aiPrefetch(w){
   }, wait);
 }
 function speakSeq(lines, rate){
-  if(!('speechSynthesis' in window)){ toast('这台机器没有语音'); return; }
+  if(!lines || !lines.length) return;
   try{ speechSynthesis.cancel(); }catch(e){}
   const texts = lines.map(l=>l.text);
+  hintLine.textContent = '对话播报中…';
+  /* 在线：云 TTS 逐句播（平板/微信浏览器也能响）；离线退回机器音 */
+  if(navigator.onLine !== false){
+    let i = 0;
+    const go = ()=>{
+      if(i >= texts.length) return;
+      const t = texts[i++];
+      cloudSay(t, rate,
+        ()=>setTimeout(go, 250),
+        ()=>speakSeqOffline(texts.slice(i - 1), rate));
+    };
+    go();
+    return;
+  }
+  speakSeqOffline(texts, rate);
+}
+function speakSeqOffline(texts, rate){
+  if(!('speechSynthesis' in window)){ toast('这台机器没有语音'); return; }
+  try{ speechSynthesis.cancel(); }catch(e){}
   let i = 0;
   const go = ()=>{
     if(i >= texts.length) return;
@@ -4078,7 +4124,6 @@ function speakSeq(lines, rate){
     i++;
   };
   go();
-  hintLine.textContent = '对话播报中…';
 }
 
 function showExplain(item, wasReview, note, full){
