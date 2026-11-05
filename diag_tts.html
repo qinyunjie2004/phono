@@ -1,0 +1,53 @@
+<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TTS 测试</title>
+<style>
+body{font-family:system-ui,sans-serif;background:#f5f5f5;padding:20px}
+button{display:block;width:100%;padding:14px;margin:8px 0;font-size:16px;border:0;border-radius:10px;background:#2196F3;color:#fff;font-weight:700}
+#out{font-family:monospace;background:#fff;border:1px solid #ddd;border-radius:8px;padding:12px;font-size:13px;white-space:pre-wrap;min-height:200px}
+.ok{color:green;font-weight:700}.bad{color:red;font-weight:700}.info{color:#333}
+</style></head><body>
+<h1>SpeechSynthesis 专项测试</h1>
+<button onclick="goTts()">▶ 播 apple</button>
+<button onclick="goTts2()">▶ 播整句 Hi Roy, I am Maxim.</button>
+<div id="out">点按钮开始…</div>
+<script>
+var out=document.getElementById('out');
+function log(s,cls){out.innerHTML += "\n" + (cls ? '<span class="'+cls+'">'+s+'</span>' : s)}
+log("speechSynthesis in window: " + ('speechSynthesis' in window));
+if('speechSynthesis' in window){
+  var vs = speechSynthesis.getVoices();
+  log("voices length: " + vs.length);
+  if(vs.length>0) vs.slice(0,3).forEach((v,i)=>log("  v"+i+": "+v.name+" ["+v.lang+"]"));
+  speechSynthesis.onvoiceschanged = function(){ log("voiceschanged fire, now: "+speechSynthesis.getVoices().length); };
+}
+function goTts(){
+  log("\n[开始测试 apple]");
+  try{
+    speechSynthesis.cancel();
+    var u = new SpeechSynthesisUtterance("apple");
+    u.lang = "en-US"; u.rate = 0.9; u.pitch = 1;
+    u.onstart = function(){ log("onstart 已触发", "ok"); };
+    u.onend = function(){ log("onend 触发 → 播放完成", "ok"); };
+    u.onerror = function(e){ log("onerror 触发: " + e.error, "bad"); };
+    u.onpause = function(){ log("onpause"); };
+    u.onresume = function(){ log("onresume"); };
+    speechSynthesis.speak(u);
+    log("speak() 已调用, speaking=" + speechSynthesis.speaking + " pending=" + speechSynthesis.pending, "info");
+    setTimeout(function(){ log("500ms 后: speaking="+speechSynthesis.speaking+" pending="+speechSynthesis.pending); }, 500);
+    setTimeout(function(){ log("4000ms 后: speaking="+speechSynthesis.speaking+" pending="+speechSynthesis.pending); }, 4000);
+  }catch(e){ log("异常: " + e.message, "bad"); }
+}
+function goTts2(){
+  log("\n[开始测试整句]");
+  try{
+    speechSynthesis.cancel();
+    var u = new SpeechSynthesisUtterance("Hi Roy, I am Maxim. Today we learn cat.");
+    u.lang = "en-US"; u.rate = 0.85; u.pitch = 1;
+    u.onstart = function(){ log("onstart", "ok"); };
+    u.onend = function(){ log("onend 完成", "ok"); };
+    u.onerror = function(e){ log("onerror: " + e.error, "bad"); };
+    speechSynthesis.speak(u);
+    log("speak() 已调用");
+  }catch(e){ log("异常: " + e.message, "bad"); }
+}
+</script></body></html>
