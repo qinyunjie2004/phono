@@ -2292,40 +2292,18 @@ function playRec(path, onFail){
     return true;
   }catch(e){ if(onFail) onFail(); return false; }
 }
-/* ---------- 云 TTS：动态句子走在线语音（百度翻译发音接口），离线退回机器音 ---------- */
-let cloudAud = null;
-function stopCloud(){ try{ if(cloudAud){ cloudAud.pause(); cloudAud.src = ''; cloudAud = null; } }catch(e){} }
-function cloudSay(text, rate, onend, onfail){
-  try{
-    stopCloud();
-    const spd = (rate && rate < 0.88) ? 2 : 3;
-    const a = new Audio(); cloudAud = a;
-    let settled = false;
-    const to = setTimeout(()=>{ if(!settled){ settled = true; fin(); if(onfail) onfail(); } }, 8000);
-    function fin(){ clearTimeout(to); a.onerror = null; a.onended = null; }
-    a.onerror = ()=>{ if(!settled){ settled = true; fin(); if(onfail) onfail(); } };
-    a.onended = ()=>{ if(!settled){ settled = true; fin(); if(onend) onend(); } };
-    a.src = 'https://fanyi.baidu.com/gettts?lan=en&spd=' + spd + '&source=web&text=' + encodeURIComponent(text);
-    const p = a.play();
-    if(p && p.catch) p.catch(()=>{ if(!settled){ settled = true; fin(); if(onfail) onfail(); } });
-    return true;
-  }catch(e){ if(onfail) onfail(); return false; }
-}
-function ttsOffline(text, rate){
-  if(!('speechSynthesis' in window) || !text) return false;
-  const u = new SpeechSynthesisUtterance(String(text));
-  u.lang = 'en-GB'; u.rate = rate || 0.9; u.pitch = 1;
-  if(voice) u.voice = voice;
-  speechSynthesis.cancel();
-  speechSynthesis.speak(u);
-  return true;
-}
+/* ---------- 动态朗读：统一走 SpeechSynthesis（跨浏览器/平板/微信无跨域问题） ---------- */
+function stopCloud(){ try{ speechSynthesis.cancel(); }catch(e){} }
 function ttsRaw(text, rate){
-  if(!text) return false;
-  if(navigator.onLine !== false){
-    return cloudSay(String(text), rate, null, ()=>ttsOffline(text, rate));
-  }
-  return ttsOffline(text, rate);
+  if(!('speechSynthesis' in window) || !text) return false;
+  try{
+    const u = new SpeechSynthesisUtterance(String(text));
+    u.lang = 'en-GB'; u.rate = rate || 0.9; u.pitch = 1;
+    if(voice) u.voice = voice;
+    speechSynthesis.cancel();
+    speechSynthesis.speak(u);
+    return true;
+  }catch(e){ return false; }
 }
 function machineTag(label){
   hintLine.textContent = '机器音 · ' + label;
@@ -2791,6 +2769,11 @@ function praise(kind, opts){
 
 /* ================= 更新日志 ================= */
 const CHANGELOG = [
+  ['v3.4.1', '2026-11-05', [
+    '修复：平板端对话朗读无声 → 废掉百度云语音（跨域被 Chrome 拦截），对话改走浏览器 SpeechSynthesis 机器音',
+    '字母/单词/例句的内嵌真人音（base64）平板完全可用，无任何改动',
+    '新增音频诊断页 /phono/diag.html 供现场排查（内嵌 base64 mp3 + 云语音 + SpeechSynthesis 三项一键测试）'
+  ]],
   ['v3.4', '2026-11-05', [
     '全量真人语音：26 个字母例词、76 个单词、76 条例句全部预录内嵌',
     '新增「读例句」按钮：词典卡和讲解卡都能听整句真人发音',
@@ -4131,39 +4114,26 @@ function aiPrefetch(w){
 }
 function speakSeq(lines, rate){
   if(!lines || !lines.length) return;
+  if(!('speechSynthesis' in window)){ toast('这台机器没有语音'); return; }
   try{ speechSynthesis.cancel(); }catch(e){}
   const texts = lines.map(l=>l.text);
   hintLine.textContent = '对话播报中…';
-  /* 在线：云 TTS 逐句播（平板/微信浏览器也能响）；离线退回机器音 */
-  if(navigator.onLine !== false){
-    let i = 0;
-    const go = ()=>{
-      if(i >= texts.length) return;
-      const t = texts[i++];
-      cloudSay(t, rate,
-        ()=>setTimeout(go, 250),
-        ()=>speakSeqOffline(texts.slice(i - 1), rate));
-    };
-    go();
-    return;
-  }
-  speakSeqOffline(texts, rate);
-}
-function speakSeqOffline(texts, rate){
-  if(!('speechSynthesis' in window)){ toast('这台机器没有语音'); return; }
-  try{ speechSynthesis.cancel(); }catch(e){}
   let i = 0;
   const go = ()=>{
-    if(i >= texts.length) return;
+    if(i >= texts.length){ hintLine.textContent = ''; return; }
     const u = new SpeechSynthesisUtterance(texts[i]);
     u.lang = 'en-GB'; u.rate = rate || 0.82; u.pitch = 1;
     if(voice) u.voice = voice;
-    u.onend = ()=>setTimeout(go, 230);
+    u.onend = ()=>setTimeout(go, 250);
     u.onerror = ()=>setTimeout(go, 200);
     try{ speechSynthesis.speak(u); }catch(e){ return; }
     i++;
   };
   go();
+}
+/* speakSeqOffline 已合并进 speakSeq，保留别名供旧调用 */
+function speakSeqOffline(texts, rate){
+  speakSeq(texts.map(t=>({text:t})), rate);
 }
 
 function showExplain(item, wasReview, note, full){
